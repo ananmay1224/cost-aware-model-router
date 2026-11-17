@@ -98,6 +98,9 @@
         demo.setAttribute('frame', 'true');
         demo.setAttribute('clicktointeract', 'true');
         demo.setAttribute('hidecanvaserrors', 'true');
+        // Default collapses to a JSON-only "Show workflow" button on narrow
+        // viewports and never renders the canvas; always show the canvas.
+        demo.setAttribute('collapseformobile', 'false');
         preview.appendChild(demo);
         clearTimeout(timer);
         done = true;
