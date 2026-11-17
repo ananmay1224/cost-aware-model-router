@@ -1,0 +1,330 @@
+{
+  "name": "Cost-aware model router",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        960,
+        0
+      ],
+      "id": "b1dc186a-d0c0-4bbd-a3a7-573305716301",
+      "name": "Merge",
+      "notesInFlow": true,
+      "notes": "Both branches rejoin"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "720759e7-8db6-4979-b4db-366fb31e3799",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1084b91c-f23f-430d-b9f5-720bdf1ccd7c",
+      "name": "Question in",
+      "webhookId": "720759e7-8db6-4979-b4db-366fb31e3799",
+      "retryOnFail": false,
+      "notesInFlow": true,
+      "notes": "POST a question as JSON"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "import re\n\n# Heuristic by design: an LLM classifier in front of the router\n# would cost more than the routing saves on cheap queries.\n# Swap for a trained classifier once there's labelled traffic.\nCOMPLEX_HINTS = [\"compare\", \"trend\", \"forecast\", \"why\", \"breakdown\", \"across\", \"anomaly\", \"explain\"]\nMAX_SIMPLE_WORDS = 25\n\n# Words are runs of letters/digits, optionally joined by apostrophes (\"EC2's\").\nWORD_RE = re.compile(r\"[a-z0-9]+(?:['\\u2019][a-z0-9]+)*\")\n\nresults = []\n\nfor item in _items:\n    body = (item.get(\"json\") or {}).get(\"body\")\n    question = body.get(\"question\") if isinstance(body, dict) else None\n\n    if not isinstance(question, str) or not question.strip():\n        results.append({\n            \"json\": {\n                \"question\": question if isinstance(question, str) else \"\",\n                \"route\": \"simple\",\n                \"word_count\": 0,\n                \"matched_hints\": [],\n                \"error\": \"body.question is missing or blank\"\n            }\n        })\n        continue\n\n    tokens = WORD_RE.findall(question.lower())\n    words = len(tokens)\n    # A hint is a hit only when a whole word starts with it:\n    # \"trends\" and \"explained\" match, \"anyhow\" does not match \"why\".\n    hits = [h for h in COMPLEX_HINTS if any(t.startswith(h) for t in tokens)]\n    route = \"complex\" if words > MAX_SIMPLE_WORDS or hits else \"simple\"\n\n    results.append({\n        \"json\": {\n            \"question\": question,\n            \"route\": route,\n            \"word_count\": words,\n            \"matched_hints\": hits\n        }\n    })\n\nreturn results"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        -96
+      ],
+      "id": "ad3882ea-7f9b-4db8-81dc-d154165d3560",
+      "name": "Classify complexity",
+      "notesInFlow": true,
+      "notes": "Scores words + hints"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "a11fba39-2980-41a0-ba97-d56bcd87bec4",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "simple",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "70dfaf1e-2d5b-4b95-a42d-4410e9fae429",
+      "name": "Route by cost",
+      "notesInFlow": true,
+      "notes": "Sends simple to cheap"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a cloud-cost analytics assistant. You do not have access to the user's billing data, cost reports or cloud accounts, so never invent specific figures. Answer from general knowledge of cloud pricing and cost management, and say what data would be needed for a precise answer (for example a Cost Explorer or billing export filtered by service, account, region and time period).\n\nThis is a simple question. Give a short, direct answer in two to four sentences, then one line naming the data needed for a precise answer."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        592,
+        -192
+      ],
+      "id": "206ee49c-fe37-4683-9f71-c65c4a93101f",
+      "name": "Basic LLM Chain: Simple",
+      "notesInFlow": true,
+      "notes": "Answer (cheap)"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-5-5",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 5.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        704,
+        -48
+      ],
+      "id": "5117d2b2-b739-447e-b249-fb59c81e0bab",
+      "name": "Haiku 5.5"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a cloud-cost analytics assistant. You do not have access to the user's billing data, cost reports or cloud accounts, so never invent specific figures. Answer from general knowledge of cloud pricing and cost management, and say what data would be needed for a precise answer (for example a Cost Explorer or billing export filtered by service, account, region and time period).\n\nThis is a complex question. Reason in a structured way:\n1. Restate what is being asked.\n2. List the most likely causes or factors, most likely first.\n3. Explain how to confirm each one and what data is needed.\n4. Recommend concrete next steps.\nUse short headings and bullet points."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        592,
+        144
+      ],
+      "id": "003b0e2f-7d2e-4c47-b71f-f9662f6525bb",
+      "name": "Basic LLM Chain: Complex",
+      "notesInFlow": true,
+      "notes": "Answer (strong)"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-opus-5-5",
+          "mode": "list",
+          "cachedResultName": "Claude Opus 5.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        704,
+        288
+      ],
+      "id": "991c92e4-95ac-4e63-9480-991b6e5502ff",
+      "name": "Opus 5.5"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1184,
+        -96
+      ],
+      "id": "fcb8a16e-3f95-4e8d-8ea3-28a5d6e5c7f6",
+      "name": "Return answer",
+      "notesInFlow": true,
+      "notes": "Same shape either way"
+    },
+    {
+      "parameters": {
+        "content": "## Cost-aware model router\n\nClassifies an incoming question as **simple** or **complex**,\nthen routes it to the cheapest model that can answer it.\n\n`simple` → **Haiku 5.5**  ·  `complex` → **Opus 5.5**\n\n---\n\nMost \"ask your data\" assistants send every question to the\nbiggest model. On a real cost-analytics workload the simple\nquestions are the majority, and they're the ones overpaying.\n\nThe classifier returns the keywords it matched, so any routing\ndecision can be explained after the fact.",
+        "height": 240,
+        "width": 448
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -352
+      ],
+      "id": "cecb12bf-7bc3-4b0c-9ee9-2acac56e9123",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "### Calling it\n\n```bash\ncurl -X POST localhost:5678/webhook/<id> \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"question\": \"EC2 spend last month\"}'\n```\n\n```json\n[{ \"text\": \"I can't see your billing data, but EC2 spend\n  is usually driven by... For an exact figure I'd need\n  a Cost Explorer export for EC2 last month.\" }]\n```\n\nSame response shape on both branches. The caller never\nneeds to know which model answered.",
+        "height": 256,
+        "width": 464
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        912,
+        160
+      ],
+      "id": "9f26ca7f-7089-4e02-8e11-b29d239e273b",
+      "name": "Sticky Note1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Return answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question in": {
+      "main": [
+        [
+          {
+            "node": "Classify complexity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify complexity": {
+      "main": [
+        [
+          {
+            "node": "Route by cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by cost": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain: Simple",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Basic LLM Chain: Complex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain: Simple": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Haiku 5.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain: Simple",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain: Complex": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Opus 5.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain: Complex",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}

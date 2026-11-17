@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cost-aware model router</title>
+  <meta name="description" content="n8n workflow that routes each question to the cheapest Claude model that can answer it.">
+  <script src="https://cdn.jsdelivr.net/npm/@webcomponents/webcomponentsjs@2.0.0/webcomponents-loader.js"></script>
+  <script src="https://www.unpkg.com/lit@2.0.0-rc.2/polyfill-support.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@n8n_io/n8n-demo-component/n8n-demo.bundled.js"></script>
+  <style>
+    :root {
+      --bg: #f7f7f8; --surface: #ffffff; --text: #1f2328; --muted: #59636e;
+      --border: #d8dee4; --accent: #ea4b71;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111317; --surface: #1a1d23; --text: #e6e8eb; --muted: #9aa3ad;
+              --border: #2d333b; --accent: #ff6d8f; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 48px; }
+    h1 { font-size: 1.9rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+    p.lede { color: var(--muted); max-width: 70ch; margin: 0 0 12px; }
+    a { color: var(--accent); }
+    .links { margin: 0 0 24px; font-size: 0.95rem; }
+    .frame {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; min-height: 300px;
+    }
+    n8n-demo { display: block; }
+    #fallback { display: none; }
+    #fallback img { display: block; width: 100%; height: auto; }
+    #fallback p { margin: 0; padding: 10px 14px; font-size: 0.9rem; color: var(--muted);
+                  border-top: 1px solid var(--border); }
+    #status { padding: 16px; color: var(--muted); font-size: 0.95rem; }
+    code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cost-aware model router</h1>
+    <p class="lede">
+      An n8n workflow that classifies each incoming question as <strong>simple</strong> or
+      <strong>complex</strong> with a small Python heuristic (more than 25 words, or a word starting
+      with a hint such as <code>why</code>, <code>trend</code> or <code>compare</code>), then sends
+      simple questions to Claude Haiku 5.5 and complex ones to Claude Opus 5.5. Most questions are
+      simple, so most of them stop overpaying for the biggest model.
+    </p>
+    <p class="links">
+      <a href="https://github.com/ananmay1224/cost-aware-model-router">Source and setup on GitHub</a>
+      · <a href="workflow.json">Download workflow.json</a>
+    </p>
+
+    <div class="frame">
+      <div id="status">Loading workflow preview…</div>
+      <div id="preview"></div>
+      <div id="fallback">
+        <img src="screenshot.png" alt="The cost-aware model router workflow in the n8n editor">
+        <p>Could not load the interactive preview, so this is a screenshot of the workflow.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      var status = document.getElementById('status');
+      var preview = document.getElementById('preview');
+      var fallback = document.getElementById('fallback');
+      var done = false;
+
+      function showFallback() {
+        if (done) return;
+        done = true;
+        status.remove();
+        preview.remove();
+        fallback.style.display = 'block';
+      }
+
+      // If the component never registers (CDN blocked, script error), fall back.
+      var timer = setTimeout(showFallback, 10000);
+
+      Promise.all([
+        fetch('workflow.json').then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        }),
+        customElements.whenDefined('n8n-demo')
+      ]).then(function (res) {
+        if (done) return;
+        var json = res[0];
+        JSON.parse(json); // fail fast on bad JSON
+        var demo = document.createElement('n8n-demo');
+        demo.setAttribute('workflow', json);
+        demo.setAttribute('frame', 'true');
+        demo.setAttribute('clicktointeract', 'true');
+        demo.setAttribute('hidecanvaserrors', 'true');
+        preview.appendChild(demo);
+        clearTimeout(timer);
+        done = true;
+        status.remove();
+      }).catch(function (err) {
+        console.error('Workflow preview failed:', err);
+        clearTimeout(timer);
+        showFallback();
+      });
+    })();
+  </script>
+</body>
+</html>
