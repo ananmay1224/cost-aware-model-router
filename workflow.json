@@ -17,7 +17,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "720759e7-8db6-4979-b4db-366fb31e3799",
+        "path": "cost-aware-model-router",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -29,7 +29,6 @@
       ],
       "id": "1084b91c-f23f-430d-b9f5-720bdf1ccd7c",
       "name": "Question in",
-      "webhookId": "720759e7-8db6-4979-b4db-366fb31e3799",
       "retryOnFail": false,
       "notesInFlow": true,
       "notes": "POST a question as JSON"
@@ -173,7 +172,8 @@
     },
     {
       "parameters": {
-        "respondWith": "allIncomingItems",
+        "respondWith": "json",
+        "responseBody": "={{ {\n  text: $json.text,\n  route: $('Classify complexity').first().json.route,\n  word_count: $('Classify complexity').first().json.word_count,\n  matched_hints: $('Classify complexity').first().json.matched_hints,\n  error: $('Classify complexity').first().json.error\n} }}",
         "options": {}
       },
       "type": "n8n-nodes-base.respondToWebhook",
@@ -185,11 +185,11 @@
       "id": "fcb8a16e-3f95-4e8d-8ea3-28a5d6e5c7f6",
       "name": "Return answer",
       "notesInFlow": true,
-      "notes": "Same shape either way"
+      "notes": "Answer + routing decision"
     },
     {
       "parameters": {
-        "content": "## Cost-aware model router\n\nClassifies an incoming question as **simple** or **complex**,\nthen routes it to the cheapest model that can answer it.\n\n`simple` → **Haiku 5.5**  ·  `complex` → **Opus 5.5**\n\n---\n\nMost \"ask your data\" assistants send every question to the\nbiggest model. On a real cost-analytics workload the simple\nquestions are the majority, and they're the ones overpaying.\n\nThe classifier returns the keywords it matched, so any routing\ndecision can be explained after the fact.",
+        "content": "## Cost-aware model router\n\nClassifies an incoming question as **simple** or **complex**,\nthen routes it to the cheapest model that can answer it.\n\n`simple` → **Haiku 5.5**  ·  `complex` → **Opus 5.5**\n\n---\n\nMost \"ask your data\" assistants send every question to the\nbiggest model. On a real cost-analytics workload the simple\nquestions are the majority, and they're the ones overpaying.\n\nThe response includes the route, word count and matched\nkeywords, so every routing decision explains itself.",
         "height": 240,
         "width": 448
       },
@@ -204,8 +204,8 @@
     },
     {
       "parameters": {
-        "content": "### Calling it\n\n```bash\ncurl -X POST localhost:5678/webhook/<id> \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"question\": \"EC2 spend last month\"}'\n```\n\n```json\n[{ \"text\": \"I can't see your billing data, but EC2 spend\n  is usually driven by... For an exact figure I'd need\n  a Cost Explorer export for EC2 last month.\" }]\n```\n\nSame response shape on both branches. The caller never\nneeds to know which model answered.",
-        "height": 256,
+        "content": "### Calling it\n\n```bash\ncurl -X POST localhost:5678/webhook/cost-aware-model-router \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"question\": \"Why is my EC2 spend so high?\"}'\n```\n\n```json\n{ \"text\": \"I can't see your billing data, but...\",\n  \"route\": \"complex\", \"word_count\": 7,\n  \"matched_hints\": [\"why\"] }\n```\n\nSame response shape on both branches. Exposing n8n publicly?\nChange the webhook path and add auth first.",
+        "height": 300,
         "width": 464
       },
       "type": "n8n-nodes-base.stickyNote",

@@ -1,4 +1,5 @@
-# Raw n8n export: contains credential IDs, instance ID and the private webhook path
+# Raw n8n export (not committed): contains credential IDs, the instance ID
+# and the live webhook path. workflow.json is the sanitised copy.
 Cost-aware model router.json
 
 .DS_Store
